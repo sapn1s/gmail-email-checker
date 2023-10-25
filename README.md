@@ -51,7 +51,7 @@ const extractInfoFromEmail = require('./gmailChecker.js'); // path to the script
 async function getInformation() {
   try {
     // Specify the exact "From" header and the regex pattern to identify the necessary content.
-    const content = await extractInfoFromEmail('Google <no-reply@accounts.google.com>', 'regex-pattern', 'path-to-client_secret.json', true);
+    const content = await extractInfoFromEmail('Google <no-reply@accounts.google.com>', '/^\\s*(\\d+)\\s*$/gm', 'path-to-client_secret.json', true);
     if (content) {
       console.log('Extracted Content:', content);
     } else {

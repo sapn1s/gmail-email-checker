@@ -23,7 +23,7 @@ async function authorize(clientSecretPath) {
       return getNewToken(oAuth2Client);
     }
   } catch (error) {
-    throw new Error('Authorization error:', error);
+    throw new Error(`Authorization error: ${error}`);
   }
 
 }
@@ -68,30 +68,42 @@ async function checkEmails(auth, sender_header, email_body_regex, logs) {
     const messages = res.data.messages;
 
     if (!messages) {
-      if(logs) console.log('No new messages.');
+      if (logs) console.log('No new messages.');
       return false;
     } else {
-      if(logs) console.log(`You have ${messages.length} new message(s):`);
+      if (logs) console.log(`You have ${messages.length} new message(s):`);
       for (const message of messages) {
 
         const msg = await gmail.users.messages.get({ userId: 'me', id: message.id });
         const fromHeader = await msg.data.payload.headers.find(header => header.name.toLowerCase() === 'from');
         if (fromHeader && fromHeader.value === sender_header) {
           // Assuming the message body is in 'data' and is base64 encoded.
-          const bodyData = msg.data.payload.body.data;
+          let bodyData;
+          if (msg.data.payload.body.data) bodyData = msg.data.payload.body.data;
+          else {
+            for (let part of msg.data.payload.parts) {
+
+              if (part.mimeType == 'text/plain') {
+                bodyData = part.body.data
+              }
+
+            }
+          }
+          if (!bodyData) return false;
+
+          //const bodyData = msg.data.payload.parts[1].body.data;
           const emailBody = Buffer.from(bodyData, 'base64').toString('utf8');
+
           // Assuming we are looking for a content in the email body.
-          const regexString = email_body_regex;
-          const myRegex = new RegExp(regexString);
-          const matches = emailBody.match(myRegex);
+          let regex = parseRegex(email_body_regex)
+          const matches = emailBody.match(regex);
           let content;
           if (matches) {
-            content = matches[1];
+            content = matches[0];
           } else {
-            if(logs) console.log("Content not found in the email body.")
+            if (logs) console.log("Content not found in the email body.")
             return false
           }
-
           // Mark the message as read
           await gmail.users.messages.modify({
             userId: 'me',
@@ -101,16 +113,17 @@ async function checkEmails(auth, sender_header, email_body_regex, logs) {
             },
           });
 
-          if(logs) console.log("Found content:", content);
+          if (logs) console.log("Found content:", content);
           return content;
-        } else {
-          if(logs) console.log("No messages from the specified sender");
-          return false;
         }
       }
+      if (logs) console.log("No messages from the specified sender");
+      return false;
     }
   } catch (error) {
-    throw new Error('The API returned an error:', error.message);
+    const newError = new Error(`The API returned an error: ${error.message}`);
+    newError.originalError = error;
+    throw newError;
 
   }
 }
@@ -122,4 +135,22 @@ module.exports = async function (sender_header, email_body_regex, clientSecretPa
 
   const auth = await authorize(clientSecretPath);
   return await checkEmails(auth, sender_header, email_body_regex, logs);
+}
+
+
+function parseRegex(regex) {
+  const isLiteral = /^\/.+\/[gimsuy]*$/.test(regex);
+
+  if (isLiteral) {
+    // The input is a regex literal. We need to extract the pattern and the flags.
+    // Find the last slash, everything before it is the pattern, and everything after it is the flags.
+    const lastSlashIndex = regex.lastIndexOf('/');
+    const pattern = regex.substring(1, lastSlashIndex);
+    const flags = regex.substring(lastSlashIndex + 1);
+
+    return new RegExp(pattern, flags);
+  } else {
+    // The input is not a regex literal. It's just a pattern (with no flags).
+    return new RegExp(regex);
+  }
 }
