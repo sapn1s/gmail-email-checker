@@ -42,7 +42,7 @@ http://localhost/?code=4/0AfJohXnhbIsC2YdVyJ-XDHyBXBmaRRRQn3sKb28r54bRIYM6hcFpbz
 
 Copy the code value and paste it back into the console. The script will handle the rest, including token generation and storage.
 
-To use the script in your code, you need to provide the specific sender's email address and a regex pattern to match the content within the email body. Optionally, you can enable console logs.
+To use the script in your code, you need to provide the specific sender's "From" header and a regex pattern to match the content within the email body. The "From" header often contains both the name and email address, for example, "Google <no-reply@accounts.google.com>". Optionally, you can enable console logs for debugging or verification purposes.
 
 Example:
 ```javascript
@@ -50,7 +50,8 @@ const extractInfoFromEmail = require('./gmailChecker.js'); // path to the script
 
 async function getInformation() {
   try {
-    const content = await extractInfoFromEmail('sender@example.com', 'regex-pattern', 'path-to-client_secret.json', true);
+    // Specify the exact "From" header and the regex pattern to identify the necessary content.
+    const content = await extractInfoFromEmail('Google <no-reply@accounts.google.com>', 'regex-pattern', 'path-to-client_secret.json', true);
     if (content) {
       console.log('Extracted Content:', content);
     } else {
@@ -61,6 +62,7 @@ async function getInformation() {
   }
 }
 
-getInformation();```
+getInformation();
+```
 
 The script returns false if no content matching the criteria is found.
