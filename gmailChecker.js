@@ -8,16 +8,61 @@ const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.g
 const TOKEN_PATH = 'token.json';
 const CLIENT_SECRET_FILE = 'client_secret.json'
 
+
+async function refreshAccessToken(oAuth2Client) {
+  try {
+    const { tokens } = await oAuth2Client.refreshToken(oAuth2Client.credentials.refresh_token);
+    oAuth2Client.setCredentials(tokens);
+    
+    // Preserve the refresh token as it might not be included in the new tokens
+    if (!tokens.refresh_token && oAuth2Client.credentials.refresh_token) {
+      tokens.refresh_token = oAuth2Client.credentials.refresh_token;
+    }
+    
+    fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
+    console.log('Token has been refreshed and saved');
+    return oAuth2Client;
+  } catch (error) {
+    throw new Error(`Error refreshing access token: ${error}`);
+  }
+}
+
+function checkTokenExpiration(token) {
+  const expiryDate = new Date(token.expiry_date);
+  const now = new Date();
+  const timeLeft = expiryDate - now;
+  
+  // Convert milliseconds to minutes
+  const minutesLeft = Math.floor(timeLeft / 1000 / 60);
+  
+  if (timeLeft <= 0) {
+    console.log('Token has expired');
+    return { expired: true, timeLeft: minutesLeft };
+  } else {
+    console.log(`Token expires in ${minutesLeft} minutes`);
+    return { expired: false, timeLeft: minutesLeft };
+  }
+}
+
 async function authorize(clientSecretPath) {
   try {
     const credentials = JSON.parse(fs.readFileSync(clientSecretPath, 'utf-8'));
     const { client_secret, client_id, redirect_uris } = credentials.installed;
-
-    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris);
+    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
 
     if (fs.existsSync(TOKEN_PATH)) {
       const token = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf-8'));
       oAuth2Client.setCredentials(token);
+      
+      // Check token expiration
+      const { expired } = checkTokenExpiration(token);
+      
+      // If token is expired, refresh it
+      if (expired) {
+        console.log('Token expired, refreshing...');
+        return await refreshAccessToken(oAuth2Client);
+      }
+      
       return oAuth2Client;
     } else {
       return getNewToken(oAuth2Client);
@@ -25,7 +70,6 @@ async function authorize(clientSecretPath) {
   } catch (error) {
     throw new Error(`Authorization error: ${error}`);
   }
-
 }
 
 async function getNewToken(oAuth2Client) {
